@@ -11,7 +11,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import type { LifelineStore, UtilityKind, YearlyDataMap } from '../shared/types.js';
+import type { LifelineStore, UtilityKind, YearlyDataMap, YearlyNotesMap } from '../shared/types.js';
 import {
   createSite,
   deleteSite,
@@ -20,6 +20,7 @@ import {
   replaceUtilityRecords,
   setActiveSite,
   updateMonthlyCell,
+  updateYearlyNote,
 } from './api.js';
 import { DataTransferModal } from './components/DataTransferModal.js';
 import { UsageCharts } from './components/UsageCharts.js';
@@ -36,6 +37,8 @@ interface HistoryEntry {
   kind: UtilityKind;
   prevRecords: YearlyDataMap;
   nextRecords: YearlyDataMap;
+  prevNotes?: YearlyNotesMap;
+  nextNotes?: YearlyNotesMap;
 }
 
 const MAX_HISTORY = 50;
@@ -59,8 +62,8 @@ export function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  const applyRecordsState = useCallback(
-    (siteId: string, kind: UtilityKind, records: YearlyDataMap) => {
+  const applyUtilityState = useCallback(
+    (siteId: string, kind: UtilityKind, records: YearlyDataMap, notes?: YearlyNotesMap) => {
       setStore((prev) => {
         if (!prev) return prev;
         return {
@@ -76,6 +79,7 @@ export function App() {
                     [kind]: {
                       ...site.utilities[kind],
                       records,
+                      ...(notes !== undefined ? { notes } : {}),
                     },
                   },
                 },
@@ -93,19 +97,24 @@ export function App() {
     setRedoStack((prev) => [...prev, entry]);
 
     setActiveKind(entry.kind);
-    applyRecordsState(entry.siteId, entry.kind, entry.prevRecords);
+    applyUtilityState(entry.siteId, entry.kind, entry.prevRecords, entry.prevNotes);
 
     setSaving(true);
     setError(null);
     try {
-      const next = await replaceUtilityRecords(entry.siteId, entry.kind, entry.prevRecords);
+      const next = await replaceUtilityRecords(
+        entry.siteId,
+        entry.kind,
+        entry.prevRecords,
+        entry.prevNotes,
+      );
       setStore(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : '元に戻す処理の保存に失敗しました');
     } finally {
       setSaving(false);
     }
-  }, [undoStack, applyRecordsState]);
+  }, [undoStack, applyUtilityState]);
 
   const handleRedo = useCallback(async () => {
     if (redoStack.length === 0) return;
@@ -114,19 +123,24 @@ export function App() {
     setUndoStack((prev) => [...prev, entry]);
 
     setActiveKind(entry.kind);
-    applyRecordsState(entry.siteId, entry.kind, entry.nextRecords);
+    applyUtilityState(entry.siteId, entry.kind, entry.nextRecords, entry.nextNotes);
 
     setSaving(true);
     setError(null);
     try {
-      const next = await replaceUtilityRecords(entry.siteId, entry.kind, entry.nextRecords);
+      const next = await replaceUtilityRecords(
+        entry.siteId,
+        entry.kind,
+        entry.nextRecords,
+        entry.nextNotes,
+      );
       setStore(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'やり直す処理の保存に失敗しました');
     } finally {
       setSaving(false);
     }
-  }, [redoStack, applyRecordsState]);
+  }, [redoStack, applyUtilityState]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -177,10 +191,12 @@ export function App() {
     kind: UtilityKind,
     prevRecords: YearlyDataMap,
     nextRecords: YearlyDataMap,
+    prevNotes?: YearlyNotesMap,
+    nextNotes?: YearlyNotesMap,
   ) => {
     setUndoStack((prev) => [
       ...prev.slice(-(MAX_HISTORY - 1)),
-      { siteId, kind, prevRecords, nextRecords },
+      { siteId, kind, prevRecords, nextRecords, prevNotes, nextNotes },
     ]);
     setRedoStack([]);
   };
@@ -259,7 +275,7 @@ export function App() {
     };
 
     pushHistory(activeSite.id, activeKind, prevRecords, nextRecords);
-    applyRecordsState(activeSite.id, activeKind, nextRecords);
+    applyUtilityState(activeSite.id, activeKind, nextRecords);
 
     setSaving(true);
     setError(null);
@@ -270,6 +286,41 @@ export function App() {
       setStore(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChangeNote = async (year: number, note: string) => {
+    const yearKey = String(year);
+    const prevNotes = activeUtility.notes ?? {};
+    const prevValue = prevNotes[yearKey] ?? '';
+    const nextNotes: YearlyNotesMap = { ...prevNotes };
+    if (note.trim() === '') {
+      delete nextNotes[yearKey];
+    } else {
+      nextNotes[yearKey] = note;
+    }
+    const nextValue = nextNotes[yearKey] ?? '';
+    if (prevValue === nextValue) return;
+
+    pushHistory(
+      activeSite.id,
+      activeKind,
+      activeUtility.records,
+      activeUtility.records,
+      prevNotes,
+      nextNotes,
+    );
+    applyUtilityState(activeSite.id, activeKind, activeUtility.records, nextNotes);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await updateYearlyNote(activeSite.id, activeKind, year, note);
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '備考の保存に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -289,7 +340,7 @@ export function App() {
     };
 
     pushHistory(activeSite.id, activeKind, prevRecords, nextRecords);
-    applyRecordsState(activeSite.id, activeKind, nextRecords);
+    applyUtilityState(activeSite.id, activeKind, nextRecords);
 
     setSaving(true);
     setError(null);
@@ -311,13 +362,17 @@ export function App() {
     const nextRecords: YearlyDataMap = { ...prevRecords };
     delete nextRecords[yearKey];
 
-    pushHistory(activeSite.id, activeKind, prevRecords, nextRecords);
-    applyRecordsState(activeSite.id, activeKind, nextRecords);
+    const prevNotes = activeUtility.notes ?? {};
+    const nextNotes: YearlyNotesMap = { ...prevNotes };
+    delete nextNotes[yearKey];
+
+    pushHistory(activeSite.id, activeKind, prevRecords, nextRecords, prevNotes, nextNotes);
+    applyUtilityState(activeSite.id, activeKind, nextRecords, nextNotes);
 
     setSaving(true);
     setError(null);
     try {
-      const next = await replaceUtilityRecords(activeSite.id, activeKind, nextRecords);
+      const next = await replaceUtilityRecords(activeSite.id, activeKind, nextRecords, nextNotes);
       setStore(next);
       setNotice(`${year}年を削除しました（誤操作の場合は「元に戻す」で復元できます）`);
     } catch (err) {
@@ -423,11 +478,13 @@ export function App() {
       <UtilityTable
         meta={activeUtility.meta}
         records={activeUtility.records}
+        notes={activeUtility.notes}
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onChangeCell={handleChangeCell}
+        onChangeNote={handleChangeNote}
         onAddYear={handleAddYear}
         onDeleteYear={handleDeleteYear}
         onError={(msg) => setError(msg)}

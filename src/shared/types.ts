@@ -20,9 +20,13 @@ export type YearEntries = Record<string, MonthlyEntry>;
 /** key: 西暦年 ("2005", "2017", "2026" 等) */
 export type YearlyDataMap = Record<string, YearEntries>;
 
+/** key: 西暦年 ("2005", "2017", "2026" 等) */
+export type YearlyNotesMap = Record<string, string>;
+
 export interface UtilityData {
   meta: UtilityMeta;
   records: YearlyDataMap;
+  notes?: YearlyNotesMap;
 }
 
 export interface SiteData {

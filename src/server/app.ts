@@ -7,7 +7,7 @@ import {
   parseExcelExportCsv,
   validateStoreJson,
 } from '../shared/csvImport.js';
-import type { UtilityKind, YearlyDataMap } from '../shared/types.js';
+import type { UtilityKind, YearlyDataMap, YearlyNotesMap } from '../shared/types.js';
 import { createDefaultSite, UTILITY_KINDS } from '../shared/utilities.js';
 import type { StoreRepository } from './store.js';
 
@@ -127,7 +127,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
     if (!isUtilityKind(kind)) {
       return c.json({ error: 'Invalid utility kind' }, 400);
     }
-    const body = await c.req.json<{ records?: YearlyDataMap }>();
+    const body = await c.req.json<{ records?: YearlyDataMap; notes?: YearlyNotesMap }>();
     if (!body.records || typeof body.records !== 'object') {
       return c.json({ error: 'records is required' }, 400);
     }
@@ -138,13 +138,64 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
         if (idx === -1) throw new Error('SITE_NOT_FOUND');
         const sites = [...current.sites];
         const target = sites[idx]!;
+        const prevUtil = target.utilities[kind];
         sites[idx] = {
           ...target,
           utilities: {
             ...target.utilities,
             [kind]: {
-              ...target.utilities[kind],
+              ...prevUtil,
               records: body.records!,
+              ...(body.notes !== undefined ? { notes: body.notes } : {}),
+            },
+          },
+        };
+        return { ...current, sites };
+      });
+      return c.json(updated);
+    } catch (e) {
+      if (e instanceof Error && e.message === 'SITE_NOT_FOUND') {
+        return c.json({ error: 'Site not found' }, 404);
+      }
+      throw e;
+    }
+  });
+
+  app.patch('/api/sites/:siteId/utilities/:kind/notes/:year', async (c) => {
+    const { siteId, kind, year } = c.req.param();
+    if (!isUtilityKind(kind)) {
+      return c.json({ error: 'Invalid utility kind' }, 400);
+    }
+    if (!/^\d{4}$/.test(year)) {
+      return c.json({ error: 'Invalid year' }, 400);
+    }
+
+    const body = await c.req.json<{ note?: unknown }>();
+    if (typeof body.note !== 'string') {
+      return c.json({ error: 'note must be a string' }, 400);
+    }
+    const noteText = body.note;
+
+    try {
+      const updated = await repo.update((current) => {
+        const idx = current.sites.findIndex((s) => s.id === siteId);
+        if (idx === -1) throw new Error('SITE_NOT_FOUND');
+        const sites = [...current.sites];
+        const target = sites[idx]!;
+        const util = target.utilities[kind];
+        const nextNotes: YearlyNotesMap = { ...(util.notes ?? {}) };
+        if (noteText.trim() === '') {
+          delete nextNotes[year];
+        } else {
+          nextNotes[year] = noteText;
+        }
+        sites[idx] = {
+          ...target,
+          utilities: {
+            ...target.utilities,
+            [kind]: {
+              ...util,
+              notes: nextNotes,
             },
           },
         };

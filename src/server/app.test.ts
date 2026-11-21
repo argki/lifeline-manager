@@ -131,4 +131,37 @@ describe('Local API endpoints', () => {
     });
     expect(reimportRes.status).toBe(200);
   });
+
+  it('updates and clears yearly notes and preserves them across export/import', async () => {
+    const { app } = setupTestApp();
+    const storeRes = await app.request('/api/store');
+    const store = (await storeRes.json()) as LifelineStore;
+    const siteId = store.sites[0]!.id;
+
+    // 備考を保存
+    const noteRes = await app.request(`/api/sites/${siteId}/utilities/water/notes/2026`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: '節水シャワーヘッドに交換' }),
+    });
+    expect(noteRes.status).toBe(200);
+    const afterNote = (await noteRes.json()) as LifelineStore;
+    expect(afterNote.sites[0]?.utilities.water.notes?.['2026']).toBe('節水シャワーヘッドに交換');
+
+    // エクスポート後に備考が保持されていること
+    const exportRes = await app.request('/api/export');
+    expect(exportRes.status).toBe(200);
+    const exported = (await exportRes.json()) as LifelineStore;
+    expect(exported.sites[0]?.utilities.water.notes?.['2026']).toBe('節水シャワーヘッドに交換');
+
+    // 空文字送信で備考キーが削除されること
+    const clearRes = await app.request(`/api/sites/${siteId}/utilities/water/notes/2026`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: '   ' }),
+    });
+    expect(clearRes.status).toBe(200);
+    const afterClear = (await clearRes.json()) as LifelineStore;
+    expect(afterClear.sites[0]?.utilities.water.notes?.['2026']).toBeUndefined();
+  });
 });

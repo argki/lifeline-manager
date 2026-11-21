@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Plus, Redo2, Trash2, Undo2 } from 'lucide-react';
 import { calculateYearSummary, getSortedYears } from '../../shared/aggregation.js';
-import type { UtilityMeta, YearlyDataMap } from '../../shared/types.js';
+import type { UtilityMeta, YearlyDataMap, YearlyNotesMap } from '../../shared/types.js';
 import { toWareki } from '../../shared/wareki.js';
 
 interface UtilityTableProps {
   meta: UtilityMeta;
   records: YearlyDataMap;
+  notes?: YearlyNotesMap;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onChangeCell: (year: number, month: number, field: 'usage' | 'amount', value: number | null) => void;
+  onChangeNote: (year: number, note: string) => void;
   onAddYear: (year: number) => void;
   onDeleteYear: (year: number) => void;
   onError: (message: string) => void;
@@ -99,14 +101,65 @@ function NumericCellInput({ value, decimalPlaces, ariaLabel, onCommit }: Numeric
   );
 }
 
+interface NoteCellInputProps {
+  value: string;
+  ariaLabel: string;
+  onCommit: (next: string) => void;
+}
+
+function NoteCellInput({ value, ariaLabel, onCommit }: NoteCellInputProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(value);
+    }
+  }, [value, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) {
+      onCommit(draft);
+    }
+  };
+
+  return (
+    <textarea
+      className="note-input"
+      aria-label={ariaLabel}
+      placeholder="備考を入力..."
+      rows={2}
+      value={editing ? draft : value}
+      onFocus={() => {
+        setEditing(true);
+        setDraft(value);
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          (e.currentTarget as HTMLTextAreaElement).blur();
+        } else if (e.key === 'Escape') {
+          setEditing(false);
+          setDraft(value);
+          (e.currentTarget as HTMLTextAreaElement).blur();
+        }
+      }}
+    />
+  );
+}
+
 export function UtilityTable({
   meta,
   records,
+  notes,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
   onChangeCell,
+  onChangeNote,
   onAddYear,
   onDeleteYear,
   onError,
@@ -244,6 +297,7 @@ export function UtilityTable({
                   <th key={m}>{(m % 12) + 1}月請求</th>
                 ))}
                 <th colSpan={2}>年次集計</th>
+                <th></th>
               </tr>
             )}
             <tr>
@@ -254,12 +308,13 @@ export function UtilityTable({
               ))}
               <th>合計</th>
               <th>平均</th>
+              <th className="note-header">備考</th>
             </tr>
           </thead>
           <tbody>
             {years.length === 0 ? (
               <tr>
-                <td colSpan={meta.billingMonths.length + 4} style={{ textAlign: 'center', padding: 24 }}>
+                <td colSpan={meta.billingMonths.length + 5} style={{ textAlign: 'center', padding: 24 }}>
                   データがありません。「年を追加」または右上の「管理・移行」→「データ移行・バックアップ」から CSV を取り込んでください。
                 </td>
               </tr>
@@ -267,6 +322,7 @@ export function UtilityTable({
               years.map((year) => {
                 const yearKey = String(year);
                 const entries = records[yearKey] ?? {};
+                const note = notes?.[yearKey] ?? '';
                 const summary = calculateYearSummary(entries, meta.billingMonths, meta.decimalPlaces);
                 const wareki = toWareki(year);
 
@@ -277,8 +333,10 @@ export function UtilityTable({
                     warekiLabel={wareki.shortLabel}
                     meta={meta}
                     entries={entries}
+                    note={note}
                     summary={summary}
                     onChangeCell={onChangeCell}
+                    onChangeNote={onChangeNote}
                   />
                 );
               })
@@ -295,8 +353,10 @@ interface FragmentRowsProps {
   warekiLabel: string;
   meta: UtilityMeta;
   entries: YearlyDataMap[string];
+  note: string;
   summary: ReturnType<typeof calculateYearSummary>;
   onChangeCell: (year: number, month: number, field: 'usage' | 'amount', value: number | null) => void;
+  onChangeNote: (year: number, note: string) => void;
 }
 
 function FragmentRows({
@@ -304,8 +364,10 @@ function FragmentRows({
   warekiLabel,
   meta,
   entries,
+  note,
   summary,
   onChangeCell,
+  onChangeNote,
 }: FragmentRowsProps) {
   return (
     <>
@@ -332,6 +394,13 @@ function FragmentRows({
         })}
         <td className="summary-cell">{formatNumber(summary.totalUsage, meta.decimalPlaces)}</td>
         <td className="summary-cell">{formatNumber(summary.averageUsage, meta.decimalPlaces)}</td>
+        <td rowSpan={2} className="note-cell">
+          <NoteCellInput
+            value={note}
+            ariaLabel={`${year}年 備考`}
+            onCommit={(val) => onChangeNote(year, val)}
+          />
+        </td>
       </tr>
       <tr className={`amount-row-${meta.kind}`}>
         <td className="unit-cell">円</td>

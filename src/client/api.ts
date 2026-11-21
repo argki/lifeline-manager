@@ -1,4 +1,4 @@
-import type { LifelineStore, UtilityKind, YearlyDataMap } from '../shared/types.js';
+import type { LifelineStore, UtilityKind, YearlyDataMap, YearlyNotesMap } from '../shared/types.js';
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -66,15 +66,29 @@ export function updateMonthlyCell(
   );
 }
 
+export function updateYearlyNote(
+  siteId: string,
+  kind: UtilityKind,
+  year: number,
+  note: string,
+): Promise<LifelineStore> {
+  return requestJson<LifelineStore>(`/api/sites/${siteId}/utilities/${kind}/notes/${year}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  });
+}
+
 export function replaceUtilityRecords(
   siteId: string,
   kind: UtilityKind,
   records: YearlyDataMap,
+  notes?: YearlyNotesMap,
 ): Promise<LifelineStore> {
   return requestJson<LifelineStore>(`/api/sites/${siteId}/utilities/${kind}/records`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ records }),
+    body: JSON.stringify(notes !== undefined ? { records, notes } : { records }),
   });
 }
 
