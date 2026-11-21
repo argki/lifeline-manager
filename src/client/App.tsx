@@ -1,0 +1,428 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowLeftRight,
+  Droplets,
+  Flame,
+  Pencil,
+  Plus,
+  Trash2,
+  Zap,
+} from 'lucide-react';
+import type { LifelineStore, UtilityKind, YearlyDataMap } from '../shared/types.js';
+import {
+  createSite,
+  deleteSite,
+  fetchStore,
+  renameSite,
+  replaceUtilityRecords,
+  setActiveSite,
+  updateMonthlyCell,
+} from './api.js';
+import { DataTransferModal } from './components/DataTransferModal.js';
+import { UsageCharts } from './components/UsageCharts.js';
+import { UtilityTable } from './components/UtilityTable.js';
+
+const TAB_CONFIG: Array<{ kind: UtilityKind; label: string; icon: typeof Droplets }> = [
+  { kind: 'water', label: '水道', icon: Droplets },
+  { kind: 'electricity', label: '電力', icon: Zap },
+  { kind: 'gas', label: 'ガス', icon: Flame },
+];
+
+interface HistoryEntry {
+  siteId: string;
+  kind: UtilityKind;
+  prevRecords: YearlyDataMap;
+  nextRecords: YearlyDataMap;
+}
+
+const MAX_HISTORY = 50;
+
+export function App() {
+  const [store, setStore] = useState<LifelineStore | null>(null);
+  const [activeKind, setActiveKind] = useState<UtilityKind>('water');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
+
+  useEffect(() => {
+    fetchStore()
+      .then((data) => setStore(data))
+      .catch((err) => setError(err instanceof Error ? err.message : '読み込みに失敗しました'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const applyRecordsState = useCallback(
+    (siteId: string, kind: UtilityKind, records: YearlyDataMap) => {
+      setStore((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          activeSiteId: siteId,
+          sites: prev.sites.map((site) =>
+            site.id !== siteId
+              ? site
+              : {
+                  ...site,
+                  utilities: {
+                    ...site.utilities,
+                    [kind]: {
+                      ...site.utilities[kind],
+                      records,
+                    },
+                  },
+                },
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+    const entry = undoStack[undoStack.length - 1]!;
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev, entry]);
+
+    setActiveKind(entry.kind);
+    applyRecordsState(entry.siteId, entry.kind, entry.prevRecords);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await replaceUtilityRecords(entry.siteId, entry.kind, entry.prevRecords);
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '元に戻す処理の保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  }, [undoStack, applyRecordsState]);
+
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const entry = redoStack[redoStack.length - 1]!;
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev, entry]);
+
+    setActiveKind(entry.kind);
+    applyRecordsState(entry.siteId, entry.kind, entry.nextRecords);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await replaceUtilityRecords(entry.siteId, entry.kind, entry.nextRecords);
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'やり直す処理の保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  }, [redoStack, applyRecordsState]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      const isMod = e.ctrlKey || e.metaKey;
+      if (!isMod) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        if (undoStack.length > 0) {
+          e.preventDefault();
+          void handleUndo();
+        }
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        if (redoStack.length > 0) {
+          e.preventDefault();
+          void handleRedo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undoStack.length, redoStack.length, handleUndo, handleRedo]);
+
+  if (loading) {
+    return <div className="app-shell">読み込み中...</div>;
+  }
+
+  if (!store || store.sites.length === 0) {
+    return (
+      <div className="app-shell">
+        <div className="error-banner">{error ?? 'データを初期化できませんでした'}</div>
+      </div>
+    );
+  }
+
+  const activeSite =
+    store.sites.find((s) => s.id === store.activeSiteId) ?? store.sites[0]!;
+  const activeUtility = activeSite.utilities[activeKind];
+
+  const pushHistory = (
+    siteId: string,
+    kind: UtilityKind,
+    prevRecords: YearlyDataMap,
+    nextRecords: YearlyDataMap,
+  ) => {
+    setUndoStack((prev) => [
+      ...prev.slice(-(MAX_HISTORY - 1)),
+      { siteId, kind, prevRecords, nextRecords },
+    ]);
+    setRedoStack([]);
+  };
+
+  const handleSelectSite = async (siteId: string) => {
+    setError(null);
+    setStore((prev) => (prev ? { ...prev, activeSiteId: siteId } : prev));
+    try {
+      const next = await setActiveSite(siteId);
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拠点切替に失敗しました');
+    }
+  };
+
+  const handleAddSite = async () => {
+    const name = window.prompt('新しい拠点名を入力してください（例: 実家、別宅）');
+    if (!name || !name.trim()) return;
+    setError(null);
+    try {
+      const res = await createSite(name.trim());
+      setStore(res.store);
+      setNotice(`拠点「${res.site.name}」を追加しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拠点追加に失敗しました');
+    }
+  };
+
+  const handleRenameSite = async () => {
+    const name = window.prompt('新しい拠点名を入力してください', activeSite.name);
+    if (!name || !name.trim() || name.trim() === activeSite.name) return;
+    setError(null);
+    try {
+      const next = await renameSite(activeSite.id, name.trim());
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拠点名の変更に失敗しました');
+    }
+  };
+
+  const handleDeleteSite = async () => {
+    if (store.sites.length <= 1) return;
+    if (!window.confirm(`拠点「${activeSite.name}」と全記録を削除しますか？`)) return;
+    setError(null);
+    try {
+      const next = await deleteSite(activeSite.id);
+      setStore(next);
+      setUndoStack([]);
+      setRedoStack([]);
+      setNotice(`拠点「${activeSite.name}」を削除しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '拠点削除に失敗しました');
+    }
+  };
+
+  const handleChangeCell = async (
+    year: number,
+    month: number,
+    field: 'usage' | 'amount',
+    value: number | null,
+  ) => {
+    const yearKey = String(year);
+    const monthKey = String(month);
+    const prevRecords = activeUtility.records;
+    const prevYear = prevRecords[yearKey] ?? {};
+    const prevEntry = prevYear[monthKey] ?? { usage: null, amount: null };
+    const nextRecords: YearlyDataMap = {
+      ...prevRecords,
+      [yearKey]: {
+        ...prevYear,
+        [monthKey]: {
+          ...prevEntry,
+          [field]: value,
+        },
+      },
+    };
+
+    pushHistory(activeSite.id, activeKind, prevRecords, nextRecords);
+    applyRecordsState(activeSite.id, activeKind, nextRecords);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await updateMonthlyCell(activeSite.id, activeKind, year, month, {
+        [field]: value,
+      });
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddYear = async (year: number) => {
+    const yearKey = String(year);
+    if (activeUtility.records[yearKey]) {
+      setNotice(`${year}年はすでに存在します`);
+      return;
+    }
+
+    const prevRecords = activeUtility.records;
+    const nextRecords: YearlyDataMap = {
+      ...prevRecords,
+      [yearKey]: {},
+    };
+
+    pushHistory(activeSite.id, activeKind, prevRecords, nextRecords);
+    applyRecordsState(activeSite.id, activeKind, nextRecords);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await replaceUtilityRecords(activeSite.id, activeKind, nextRecords);
+      setStore(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '年の追加に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteYear = async (year: number) => {
+    const yearKey = String(year);
+    if (!activeUtility.records[yearKey]) return;
+
+    const prevRecords = activeUtility.records;
+    const nextRecords: YearlyDataMap = { ...prevRecords };
+    delete nextRecords[yearKey];
+
+    pushHistory(activeSite.id, activeKind, prevRecords, nextRecords);
+    applyRecordsState(activeSite.id, activeKind, nextRecords);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await replaceUtilityRecords(activeSite.id, activeKind, nextRecords);
+      setStore(next);
+      setNotice(`${year}年を削除しました（誤操作の場合は「元に戻す」で復元できます）`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '年の削除に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="header-left">
+          <h1 className="app-title">ライフライン使用量・料金管理</h1>
+          <div className="site-controls">
+            <select
+              className="site-select"
+              aria-label="拠点選択"
+              value={activeSite.id}
+              onChange={(e) => handleSelectSite(e.target.value)}
+            >
+              {store.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn" onClick={handleAddSite} title="拠点を追加">
+              <Plus size={14} />
+              追加
+            </button>
+            <button type="button" className="btn" onClick={handleRenameSite} title="拠点名を変更">
+              <Pencil size={14} />
+              名称変更
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handleDeleteSite}
+              disabled={store.sites.length <= 1}
+              title="拠点を削除"
+            >
+              <Trash2 size={14} />
+              削除
+            </button>
+          </div>
+        </div>
+
+        <div className="header-right">
+          <span className={`save-badge ${saving ? 'saving' : ''}`}>
+            {saving ? '保存中...' : 'ローカル保存済み'}
+          </span>
+          <button type="button" className="btn" onClick={() => setShowTransferModal(true)}>
+            <ArrowLeftRight size={15} />
+            データ移行・バックアップ
+          </button>
+        </div>
+      </header>
+
+      {error && <div className="error-banner">{error}</div>}
+      {notice && (
+        <div className="success-banner" onClick={() => setNotice(null)} role="status">
+          {notice}
+        </div>
+      )}
+
+      <nav className="utility-tabs" aria-label="ライフライン種別">
+        {TAB_CONFIG.map(({ kind, label, icon: Icon }) => (
+          <button
+            key={kind}
+            type="button"
+            className={`utility-tab ${activeKind === kind ? 'active' : ''}`}
+            onClick={() => setActiveKind(kind)}
+          >
+            <Icon size={17} />
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <UtilityTable
+        meta={activeUtility.meta}
+        records={activeUtility.records}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onChangeCell={handleChangeCell}
+        onAddYear={handleAddYear}
+        onDeleteYear={handleDeleteYear}
+        onError={(msg) => setError(msg)}
+      />
+
+      <UsageCharts meta={activeUtility.meta} records={activeUtility.records} />
+
+      {showTransferModal && (
+        <DataTransferModal
+          store={store}
+          activeSite={activeSite}
+          activeKind={activeKind}
+          onUpdated={(nextStore, message) => {
+            setStore(nextStore);
+            setUndoStack([]);
+            setRedoStack([]);
+            setNotice(message);
+          }}
+          onClose={() => setShowTransferModal(false)}
+        />
+      )}
+    </div>
+  );
+}
