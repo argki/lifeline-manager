@@ -10,7 +10,7 @@
 | **ローカル API** | Hono (`@hono/node-server`) | 軽量・高速・TypeScript ファースト。API とビルド済み静的ファイル配信を 1 プロセスで完結可能 |
 | **データ永続化** | ローカル JSON ファイル (`/app/data/lifeline.json`) | ネイティブバイナリ依存（C++ ビルド等）がなく、Win/Mac Docker 環境で確実に動作しバックアップも容易 |
 | **テスト / 品質** | Vitest + ESLint + Prettier + `tsc` | 高速な単体テストと厳格な静的解析をコンテナ内で完結 |
-| **コンテナ** | Docker / Docker Compose (`node:22-alpine`) | ホスト OS に Node.js や依存パッケージをインストールせず環境を清潔に保つ |
+| **コンテナ** | Docker / Docker Compose (`node:26-alpine`) | ホスト OS に Node.js や依存パッケージをインストールせず環境を清潔に保つ |
 
 ---
 

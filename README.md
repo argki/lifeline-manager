@@ -33,5 +33,5 @@ Docker コンテナ上で完結して動作するため、PC（Windows / macOS�
 ## 開発・テスト用コマンド（コンテナ実行）
 
 ```bash
-docker run --rm -v "$(pwd):/app" -w /app node:22-alpine sh -c "corepack enable && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build"
+docker run --rm -v "$(pwd):/app" -w /app node:26-alpine sh -c "npm install -g corepack@latest && corepack enable && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build"
 ```
