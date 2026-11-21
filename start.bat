@@ -35,6 +35,9 @@ timeout /t 1 /nobreak >nul
 goto WAIT_LOOP
 
 :READY
+echo [Lifeline Manager] Keeping WSL session active while container is running...
+powershell -NoProfile -Command "$q = [char]34; Start-Process -FilePath 'wsl.exe' -WindowStyle Hidden -ArgumentList ('-e sh -c ' + $q + 'exec 9>/tmp/lifeline-manager-keepalive.lock && flock -n 9 && while docker inspect -f {{.State.Running}} lifeline-manager 2>/dev/null | grep -qx true; do sleep 10; done' + $q)"
+
 echo [Lifeline Manager] Opening browser (http://127.0.0.1:3456)...
 set "EDGE_EXE="
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
