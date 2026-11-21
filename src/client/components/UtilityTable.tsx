@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus, Redo2, Undo2 } from 'lucide-react';
 import { calculateYearSummary, getSortedYears } from '../../shared/aggregation.js';
+import {
+  ADD_YEAR_FOCUS_KEY,
+  buildTableFocusOrder,
+  cellFocusKey,
+  getAdjacentFocusKey,
+  noteFocusKey,
+  type FocusDirection,
+} from '../../shared/tableNavigation.js';
 import type { UtilityMeta, YearlyDataMap, YearlyNotesMap } from '../../shared/types.js';
 import { toWareki } from '../../shared/wareki.js';
 
@@ -22,7 +30,9 @@ interface NumericCellInputProps {
   value: number | null;
   decimalPlaces: number;
   ariaLabel: string;
+  focusKey: string;
   onCommit: (next: number | null) => void;
+  onNavigate: (currentKey: string, direction: FocusDirection) => boolean;
 }
 
 function formatNumber(value: number | null, decimalPlaces: number): string {
@@ -36,7 +46,14 @@ function formatNumber(value: number | null, decimalPlaces: number): string {
   });
 }
 
-function NumericCellInput({ value, decimalPlaces, ariaLabel, onCommit }: NumericCellInputProps) {
+function NumericCellInput({
+  value,
+  decimalPlaces,
+  ariaLabel,
+  focusKey,
+  onCommit,
+  onNavigate,
+}: NumericCellInputProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -71,6 +88,7 @@ function NumericCellInput({ value, decimalPlaces, ariaLabel, onCommit }: Numeric
       inputMode="decimal"
       className="cell-input"
       aria-label={ariaLabel}
+      data-focus-key={focusKey}
       value={
         editing
           ? draft
@@ -88,8 +106,15 @@ function NumericCellInput({ value, decimalPlaces, ariaLabel, onCommit }: Numeric
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          (e.currentTarget as HTMLInputElement).blur();
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === 'Tab') {
+          if (onNavigate(focusKey, e.shiftKey ? 'prev' : 'next')) {
+            e.preventDefault();
+          }
+        } else if (e.key === 'Enter') {
+          if (!onNavigate(focusKey, 'next')) {
+            (e.currentTarget as HTMLInputElement).blur();
+          }
         } else if (e.key === 'Escape') {
           setEditing(false);
           setDraft(value === null ? '' : String(value));
@@ -103,10 +128,12 @@ function NumericCellInput({ value, decimalPlaces, ariaLabel, onCommit }: Numeric
 interface NoteCellInputProps {
   value: string;
   ariaLabel: string;
+  focusKey: string;
   onCommit: (next: string) => void;
+  onNavigate: (currentKey: string, direction: FocusDirection) => boolean;
 }
 
-function NoteCellInput({ value, ariaLabel, onCommit }: NoteCellInputProps) {
+function NoteCellInput({ value, ariaLabel, focusKey, onCommit, onNavigate }: NoteCellInputProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -127,6 +154,7 @@ function NoteCellInput({ value, ariaLabel, onCommit }: NoteCellInputProps) {
     <textarea
       className="note-input"
       aria-label={ariaLabel}
+      data-focus-key={focusKey}
       placeholder="備考を入力..."
       rows={2}
       value={editing ? draft : value}
@@ -137,7 +165,12 @@ function NoteCellInput({ value, ariaLabel, onCommit }: NoteCellInputProps) {
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === 'Tab') {
+          if (onNavigate(focusKey, e.shiftKey ? 'prev' : 'next')) {
+            e.preventDefault();
+          }
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           (e.currentTarget as HTMLTextAreaElement).blur();
         } else if (e.key === 'Escape') {
           setEditing(false);
@@ -162,11 +195,30 @@ export function UtilityTable({
   onAddYear,
   onDeleteYear,
 }: UtilityTableProps) {
+  const tableRef = useRef<HTMLTableElement>(null);
   const years = getSortedYears(records);
   const currentYear = new Date().getFullYear();
   const nextYear = years.length > 0 ? years[years.length - 1]! + 1 : currentYear;
   const lastYear = years.length > 0 ? years[years.length - 1]! : null;
   const canAddYear = nextYear <= 2100;
+
+  const focusOrder = useMemo(
+    () => buildTableFocusOrder(years, meta.billingMonths, canAddYear),
+    [years, meta.billingMonths, canAddYear],
+  );
+
+  const handleNavigate = (currentKey: string, direction: FocusDirection): boolean => {
+    const nextKey = getAdjacentFocusKey(focusOrder, currentKey, direction);
+    if (!nextKey) return false;
+
+    const target = tableRef.current?.querySelector<HTMLElement>(`[data-focus-key="${nextKey}"]`);
+    if (!target || ('disabled' in target && (target as HTMLButtonElement).disabled)) {
+      return false;
+    }
+
+    target.focus();
+    return true;
+  };
 
   const addTooltip = canAddYear
     ? `${nextYear} (${toWareki(nextYear).shortLabel}) 年を追加`
@@ -230,7 +282,7 @@ export function UtilityTable({
       </div>
 
       <div className="table-scroll">
-        <table className="utility-table">
+        <table className="utility-table" ref={tableRef}>
           <thead>
             {meta.kind === 'electricity' && (
               <tr className="sub-header">
@@ -279,6 +331,7 @@ export function UtilityTable({
                     summary={summary}
                     onChangeCell={onChangeCell}
                     onChangeNote={onChangeNote}
+                    onNavigate={handleNavigate}
                   />
                 );
               })
@@ -291,7 +344,15 @@ export function UtilityTable({
                   <button
                     type="button"
                     className="year-action-btn year-action-add"
+                    data-focus-key={ADD_YEAR_FOCUS_KEY}
                     onClick={handleAddNextYear}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' && e.shiftKey) {
+                        if (handleNavigate(ADD_YEAR_FOCUS_KEY, 'prev')) {
+                          e.preventDefault();
+                        }
+                      }
+                    }}
                     disabled={!canAddYear}
                     data-tooltip={addTooltip}
                     aria-label={addTooltip}
@@ -328,6 +389,7 @@ interface FragmentRowsProps {
   summary: ReturnType<typeof calculateYearSummary>;
   onChangeCell: (year: number, month: number, field: 'usage' | 'amount', value: number | null) => void;
   onChangeNote: (year: number, note: string) => void;
+  onNavigate: (currentKey: string, direction: FocusDirection) => boolean;
 }
 
 function FragmentRows({
@@ -339,6 +401,7 @@ function FragmentRows({
   summary,
   onChangeCell,
   onChangeNote,
+  onNavigate,
 }: FragmentRowsProps) {
   return (
     <>
@@ -358,7 +421,9 @@ function FragmentRows({
                 value={entry?.usage ?? null}
                 decimalPlaces={meta.decimalPlaces}
                 ariaLabel={`${year}年${m}月 使用量`}
+                focusKey={cellFocusKey(year, m, 'usage')}
                 onCommit={(val) => onChangeCell(year, m, 'usage', val)}
+                onNavigate={onNavigate}
               />
             </td>
           );
@@ -369,7 +434,9 @@ function FragmentRows({
           <NoteCellInput
             value={note}
             ariaLabel={`${year}年 備考`}
+            focusKey={noteFocusKey(year)}
             onCommit={(val) => onChangeNote(year, val)}
+            onNavigate={onNavigate}
           />
         </td>
       </tr>
@@ -383,7 +450,9 @@ function FragmentRows({
                 value={entry?.amount ?? null}
                 decimalPlaces={0}
                 ariaLabel={`${year}年${m}月 金額`}
+                focusKey={cellFocusKey(year, m, 'amount')}
                 onCommit={(val) => onChangeCell(year, m, 'amount', val)}
+                onNavigate={onNavigate}
               />
             </td>
           );
