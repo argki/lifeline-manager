@@ -245,13 +245,12 @@ body {
 }
 
 .utility-table th:last-child,
-.utility-table tbody tr:nth-child(odd) td:last-child {
+.utility-table tbody tr:nth-child(odd) td:last-child,
+.utility-table tfoot tr td:last-child {
   border-right: none;
 }
 
-.utility-table tbody tr:last-child td,
-.utility-table tbody tr:nth-last-child(2) td.year-cell,
-.utility-table tbody tr:nth-last-child(2) td.note-cell {
+.utility-table tfoot tr td {
   border-bottom: none;
 }
 
@@ -309,6 +308,60 @@ body {
   background: #f8fafc;
   width: 84px;
   min-width: 84px;
+}
+
+.utility-table td.year-actions-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  text-align: center;
+  background: #f8fafc;
+  width: 84px;
+  min-width: 84px;
+  padding: 6px 4px;
+}
+
+.utility-table td.year-actions-spacer {
+  background: #f8fafc;
+}
+
+.year-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.year-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.year-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.year-action-add:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.year-action-remove:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .utility-table td.unit-cell {

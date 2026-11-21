@@ -586,7 +586,6 @@ export function App() {
         onChangeNote={handleChangeNote}
         onAddYear={handleAddYear}
         onDeleteYear={handleDeleteYear}
-        onError={(msg) => setError(msg)}
       />
 
       <UsageCharts meta={activeUtility.meta} records={activeUtility.records} />

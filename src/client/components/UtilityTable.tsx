@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { Minus, Plus, Redo2, Undo2 } from 'lucide-react';
 import { calculateYearSummary, getSortedYears } from '../../shared/aggregation.js';
 import type { UtilityMeta, YearlyDataMap, YearlyNotesMap } from '../../shared/types.js';
 import { toWareki } from '../../shared/wareki.js';
@@ -16,7 +16,6 @@ interface UtilityTableProps {
   onChangeNote: (year: number, note: string) => void;
   onAddYear: (year: number) => void;
   onDeleteYear: (year: number) => void;
-  onError: (message: string) => void;
 }
 
 interface NumericCellInputProps {
@@ -162,74 +161,48 @@ export function UtilityTable({
   onChangeNote,
   onAddYear,
   onDeleteYear,
-  onError,
 }: UtilityTableProps) {
   const years = getSortedYears(records);
   const currentYear = new Date().getFullYear();
-  const nextSuggestedYear = years.length > 0 ? years[years.length - 1]! + 1 : currentYear;
-  const [targetYearInput, setTargetYearInput] = useState<string>(String(nextSuggestedYear));
+  const nextYear = years.length > 0 ? years[years.length - 1]! + 1 : currentYear;
+  const lastYear = years.length > 0 ? years[years.length - 1]! : null;
+  const canAddYear = nextYear <= 2100;
 
-  useEffect(() => {
-    setTargetYearInput(String(nextSuggestedYear));
-  }, [nextSuggestedYear]);
+  const addTooltip = canAddYear
+    ? `${nextYear} (${toWareki(nextYear).shortLabel}) 年を追加`
+    : 'これ以上の年は追加できません';
+  const deleteTooltip =
+    lastYear !== null
+      ? `${lastYear} (${toWareki(lastYear).shortLabel}) 年を削除`
+      : '削除できる年がありません';
 
-  const parseTargetYear = (): number | null => {
-    const trimmed = targetYearInput.trim();
-    if (!/^\d{4}$/.test(trimmed)) {
-      onError('西暦4桁の年（例: 2026）を入力してください');
-      return null;
-    }
-    const parsed = Number(trimmed);
-    if (!Number.isInteger(parsed) || parsed < 1989 || parsed > 2100) {
-      onError('1989〜2100 の範囲の西暦年を入力してください');
-      return null;
-    }
-    return parsed;
+  const handleAddNextYear = () => {
+    if (!canAddYear) return;
+    onAddYear(nextYear);
   };
 
-  const handleAddYear = () => {
-    const parsed = parseTargetYear();
-    if (parsed === null) return;
-    onAddYear(parsed);
-  };
+  const handleDeleteLastYear = () => {
+    if (lastYear === null) return;
 
-  const handleDeleteYear = () => {
-    const target = parseTargetYear();
-    if (target === null) return;
-
-    const yearEntries = records[String(target)];
-    if (!yearEntries) {
-      onError(`${target}年は登録されていないため削除できません`);
-      return;
-    }
-
+    const yearEntries = records[String(lastYear)] ?? {};
     const filledMonths = Object.values(yearEntries).filter(
       (entry) => entry.usage !== null || entry.amount !== null,
     ).length;
-    const wareki = toWareki(target).shortLabel;
+    const wareki = toWareki(lastYear).shortLabel;
 
     const message =
       filledMonths > 0
-        ? `${target}年 (${wareki}) には ${filledMonths} ヶ月分のデータがあります。\n本当に削除しますか？（削除後も「元に戻す (Ctrl+Z)」で復元できます）`
-        : `${target}年 (${wareki}) の行を削除しますか？`;
+        ? `${lastYear}年 (${wareki}) には ${filledMonths} ヶ月分のデータがあります。\n本当に削除しますか？（削除後も「元に戻す (Ctrl+Z)」で復元できます）`
+        : `${lastYear}年 (${wareki}) の行を削除しますか？`;
 
     if (!window.confirm(message)) return;
-    onDeleteYear(target);
+    onDeleteYear(lastYear);
   };
-
-  const parsedPreviewYear = /^\d{4}$/.test(targetYearInput.trim())
-    ? Number(targetYearInput.trim())
-    : null;
-  const addYearLabel =
-    parsedPreviewYear && parsedPreviewYear >= 1989 && parsedPreviewYear <= 2100
-      ? ` (${toWareki(parsedPreviewYear).shortLabel})`
-      : '';
 
   return (
     <section className="card">
       <div className="card-header">
         <div className="card-title-group">
-          <h2 className="card-title">{meta.label}</h2>
           {meta.billingNote && <span className="billing-note">{meta.billingNote}</span>}
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
@@ -252,37 +225,6 @@ export function UtilityTable({
           >
             <Redo2 size={15} />
             やり直す
-          </button>
-
-          <span style={{ color: 'var(--border)' }}>|</span>
-
-          <input
-            type="text"
-            inputMode="numeric"
-            value={targetYearInput}
-            onChange={(e) => setTargetYearInput(e.target.value)}
-            style={{
-              width: 82,
-              padding: '5px 8px',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              fontSize: '0.85rem',
-            }}
-            aria-label="追加・削除する西暦年"
-          />
-          <button type="button" className="btn btn-primary" onClick={handleAddYear}>
-            <Plus size={15} />
-            年を追加{addYearLabel}
-          </button>
-          <button
-            type="button"
-            className="btn btn-danger"
-            onClick={handleDeleteYear}
-            disabled={years.length === 0}
-            title="入力欄の西暦年を削除"
-          >
-            <Trash2 size={15} />
-            年を削除
           </button>
         </div>
       </div>
@@ -315,7 +257,7 @@ export function UtilityTable({
             {years.length === 0 ? (
               <tr>
                 <td colSpan={meta.billingMonths.length + 5} style={{ textAlign: 'center', padding: 24 }}>
-                  データがありません。「年を追加」または右上の「管理・移行」→「データ移行・バックアップ」から CSV を取り込んでください。
+                  データがありません。下の「＋」ボタンから年を追加するか、右上の「管理・移行」→「データ移行・バックアップ」から CSV を取り込んでください。
                 </td>
               </tr>
             ) : (
@@ -342,6 +284,35 @@ export function UtilityTable({
               })
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td className="year-actions-cell">
+                <div className="year-actions">
+                  <button
+                    type="button"
+                    className="year-action-btn year-action-add"
+                    onClick={handleAddNextYear}
+                    disabled={!canAddYear}
+                    title={addTooltip}
+                    aria-label={addTooltip}
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="year-action-btn year-action-remove"
+                    onClick={handleDeleteLastYear}
+                    disabled={lastYear === null}
+                    title={deleteTooltip}
+                    aria-label={deleteTooltip}
+                  >
+                    <Minus size={14} />
+                  </button>
+                </div>
+              </td>
+              <td colSpan={meta.billingMonths.length + 4} className="year-actions-spacer" />
+            </tr>
+          </tfoot>
         </table>
       </div>
     </section>
