@@ -36,5 +36,17 @@ goto WAIT_LOOP
 
 :READY
 echo [Lifeline Manager] Opening browser (http://127.0.0.1:3456)...
-start "" "http://127.0.0.1:3456"
+set "EDGE_EXE="
+if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
+  set "EDGE_EXE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+) else if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (
+  set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+)
+
+if defined EDGE_EXE (
+  start "" "%EDGE_EXE%" "http://127.0.0.1:3456"
+) else (
+  powershell -NoProfile -Command "Start-Process 'http://127.0.0.1:3456'"
+)
+timeout /t 1 /nobreak >nul
 exit /b 0
