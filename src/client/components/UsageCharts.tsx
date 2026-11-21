@@ -77,7 +77,7 @@ export function UsageCharts({ meta, records }: UsageChartsProps) {
     <section className="card">
       <div className="card-header">
         <div className="card-title-group">
-          <h2 className="card-title">{metricLabel}推移グラフ（リアルタイム反映）</h2>
+          <h2 className="card-title">{metricLabel}推移グラフ</h2>
           <span className="billing-note">単位: {metricUnit}</span>
           <div className="metric-toggle" role="group" aria-label="グラフ表示指標">
             <button
