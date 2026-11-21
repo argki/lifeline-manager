@@ -245,7 +245,7 @@ body {
 }
 
 .utility-table th:last-child,
-.utility-table td:last-child {
+.utility-table tbody tr:nth-child(odd) td:last-child {
   border-right: none;
 }
 
