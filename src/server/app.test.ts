@@ -164,4 +164,57 @@ describe('Local API endpoints', () => {
     const afterClear = (await clearRes.json()) as LifelineStore;
     expect(afterClear.sites[0]?.utilities.water.notes?.['2026']).toBeUndefined();
   });
+
+  it('streams SSE store-updated events on mutations and ignores active-site changes', async () => {
+    const { app } = setupTestApp();
+    const storeRes = await app.request('/api/store');
+    const store = (await storeRes.json()) as LifelineStore;
+    const siteId = store.sites[0]!.id;
+
+    const controller = new AbortController();
+    const sseRes = await app.request('/api/events', { signal: controller.signal });
+    expect(sseRes.status).toBe(200);
+    expect(sseRes.headers.get('content-type')).toContain('text/event-stream');
+
+    const reader = sseRes.body!.getReader();
+    const decoder = new TextDecoder();
+
+    const readChunkText = async () => {
+      const result = await reader.read();
+      if (result.done || !result.value) return '';
+      return decoder.decode(result.value, { stream: true });
+    };
+
+    const firstChunk = await readChunkText();
+    expect(firstChunk).toContain('event: connected');
+
+    // active-site の切り替えは他ウィンドウへブロードキャストしない
+    const activeRes = await app.request('/api/active-site', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': 'client-a',
+      },
+      body: JSON.stringify({ siteId }),
+    });
+    expect(activeRes.status).toBe(200);
+
+    // セル更新時は store-updated イベントと sourceClientId が配信される
+    const patchRes = await app.request(`/api/sites/${siteId}/utilities/water/records/2026/3`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': 'client-a',
+      },
+      body: JSON.stringify({ usage: 20, amount: 7000 }),
+    });
+    expect(patchRes.status).toBe(200);
+
+    const updateChunk = await readChunkText();
+    expect(updateChunk).toContain('event: store-updated');
+    expect(updateChunk).toContain('"sourceClientId":"client-a"');
+
+    controller.abort();
+    await reader.cancel();
+  });
 });

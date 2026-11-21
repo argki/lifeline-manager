@@ -1,7 +1,22 @@
 import type { LifelineStore, UtilityKind, YearlyDataMap, YearlyNotesMap } from '../shared/types.js';
 
+function createClientId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const CLIENT_ID = createClientId();
+
+export function getClientId(): string {
+  return CLIENT_ID;
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const headers = new Headers(init?.headers);
+  headers.set('X-Client-Id', CLIENT_ID);
+  const res = await fetch(url, { ...init, headers });
   if (!res.ok) {
     let message = `API Error (${res.status})`;
     try {

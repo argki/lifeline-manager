@@ -1,7 +1,8 @@
 import { serveStatic } from '@hono/node-server/serve-static';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import {
   mergeYearlyRecords,
   parseExcelExportCsv,
@@ -9,6 +10,7 @@ import {
 } from '../shared/csvImport.js';
 import type { UtilityKind, YearlyDataMap, YearlyNotesMap } from '../shared/types.js';
 import { createDefaultSite, UTILITY_KINDS } from '../shared/utilities.js';
+import { createStoreEventBus, type StoreEventBus } from './events.js';
 import type { StoreRepository } from './store.js';
 
 function isUtilityKind(value: string): value is UtilityKind {
@@ -19,11 +21,63 @@ function createSiteId(): string {
   return `site-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
+const SSE_HEARTBEAT_MS = 25_000;
+
+export function createApp(
+  repo: StoreRepository,
+  clientDistDir?: string,
+  eventBus: StoreEventBus = createStoreEventBus(),
+): Hono {
   const app = new Hono();
+
+  const publishStoreUpdate = (c: Context, updatedAt: string) => {
+    const sourceClientId = c.req.header('x-client-id')?.trim() || undefined;
+    eventBus.publish({ updatedAt, sourceClientId });
+  };
 
   app.get('/api/health', (c) => {
     return c.json({ ok: true, timestamp: new Date().toISOString() });
+  });
+
+  app.get('/api/events', (c) => {
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+
+      const unsubscribe = eventBus.subscribe((event) => {
+        if (closed) return;
+        void stream.writeSSE({
+          event: 'store-updated',
+          data: JSON.stringify(event),
+        });
+      });
+
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        void stream.writeSSE({
+          event: 'ping',
+          data: '',
+        });
+      }, SSE_HEARTBEAT_MS);
+
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeat);
+        unsubscribe();
+      };
+
+      await stream.writeSSE({
+        event: 'connected',
+        data: JSON.stringify({ ok: true }),
+      });
+
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          cleanup();
+          resolve();
+        });
+      });
+    });
   });
 
   app.get('/api/store', async (c) => {
@@ -66,6 +120,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
       activeSiteId: newSite.id,
       sites: [...current.sites, newSite],
     }));
+    publishStoreUpdate(c, updated.updatedAt);
     return c.json({ site: newSite, store: updated }, 201);
   });
 
@@ -85,6 +140,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
         sites[idx] = { ...sites[idx]!, name };
         return { ...current, sites };
       });
+      publishStoreUpdate(c, updated.updatedAt);
       return c.json(updated);
     } catch (e) {
       if (e instanceof Error && e.message === 'SITE_NOT_FOUND') {
@@ -109,6 +165,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
           current.activeSiteId === siteId ? (filtered[0]?.id ?? null) : current.activeSiteId;
         return { ...current, activeSiteId: nextActive, sites: filtered };
       });
+      publishStoreUpdate(c, updated.updatedAt);
       return c.json(updated);
     } catch (e) {
       if (e instanceof Error && e.message === 'LAST_SITE') {
@@ -152,6 +209,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
         };
         return { ...current, sites };
       });
+      publishStoreUpdate(c, updated.updatedAt);
       return c.json(updated);
     } catch (e) {
       if (e instanceof Error && e.message === 'SITE_NOT_FOUND') {
@@ -201,6 +259,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
         };
         return { ...current, sites };
       });
+      publishStoreUpdate(c, updated.updatedAt);
       return c.json(updated);
     } catch (e) {
       if (e instanceof Error && e.message === 'SITE_NOT_FOUND') {
@@ -253,6 +312,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
         };
         return { ...current, sites };
       });
+      publishStoreUpdate(c, updated.updatedAt);
       return c.json(updated);
     } catch (e) {
       if (e instanceof Error && e.message === 'SITE_NOT_FOUND') {
@@ -311,6 +371,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
         };
         return { ...current, sites };
       });
+      publishStoreUpdate(c, updated.updatedAt);
       return c.json({
         detectedKind: targetKind,
         importedYears: parsed.importedYears,
@@ -347,6 +408,7 @@ export function createApp(repo: StoreRepository, clientDistDir?: string): Hono {
       const raw: unknown = await c.req.json();
       const validated = validateStoreJson(raw);
       const saved = await repo.save(validated);
+      publishStoreUpdate(c, saved.updatedAt);
       return c.json(saved);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'インポートデータが不正です';

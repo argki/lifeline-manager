@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -16,6 +16,7 @@ import {
   createSite,
   deleteSite,
   fetchStore,
+  getClientId,
   renameSite,
   replaceUtilityRecords,
   setActiveSite,
@@ -42,9 +43,31 @@ interface HistoryEntry {
 }
 
 const MAX_HISTORY = 50;
+const ACTIVE_SITE_STORAGE_KEY = 'lifeline.activeSiteId';
+
+function getStoredActiveSiteId(): string | null {
+  try {
+    return window.sessionStorage.getItem(ACTIVE_SITE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredActiveSiteId(siteId: string | null): void {
+  try {
+    if (siteId) {
+      window.sessionStorage.setItem(ACTIVE_SITE_STORAGE_KEY, siteId);
+    } else {
+      window.sessionStorage.removeItem(ACTIVE_SITE_STORAGE_KEY);
+    }
+  } catch {
+    // ignore sessionStorage failure
+  }
+}
 
 export function App() {
   const [store, setStore] = useState<LifelineStore | null>(null);
+  const [activeSiteId, setActiveSiteId] = useState<string | null>(() => getStoredActiveSiteId());
   const [activeKind, setActiveKind] = useState<UtilityKind>('water');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,10 +80,80 @@ export function App() {
 
   useEffect(() => {
     fetchStore()
-      .then((data) => setStore(data))
+      .then((data) => {
+        setStore(data);
+        setActiveSiteId((prev) => {
+          const validPrev = prev && data.sites.some((s) => s.id === prev) ? prev : null;
+          const resolved = validPrev ?? data.activeSiteId ?? data.sites[0]?.id ?? null;
+          saveStoredActiveSiteId(resolved);
+          return resolved;
+        });
+      })
       .catch((err) => setError(err instanceof Error ? err.message : '読み込みに失敗しました'))
       .finally(() => setLoading(false));
   }, []);
+
+  const syncInFlightRef = useRef(false);
+  const syncPendingRef = useRef(false);
+  const hasConnectedOnceRef = useRef(false);
+
+  const syncFromServer = useCallback(async () => {
+    if (syncInFlightRef.current) {
+      syncPendingRef.current = true;
+      return;
+    }
+    syncInFlightRef.current = true;
+    try {
+      do {
+        syncPendingRef.current = false;
+        const latest = await fetchStore();
+        setStore(latest);
+        setActiveSiteId((prev) => {
+          if (prev && latest.sites.some((s) => s.id === prev)) {
+            return prev;
+          }
+          const fallback = latest.activeSiteId ?? latest.sites[0]?.id ?? null;
+          saveStoredActiveSiteId(fallback);
+          return fallback;
+        });
+      } while (syncPendingRef.current);
+    } catch {
+      // ネットワーク一時エラー時は次回イベント・再接続で再同期
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+    const source = new EventSource('/api/events');
+
+    source.addEventListener('connected', () => {
+      if (hasConnectedOnceRef.current) {
+        void syncFromServer();
+      } else {
+        hasConnectedOnceRef.current = true;
+      }
+    });
+
+    source.addEventListener('store-updated', (event) => {
+      try {
+        const payload = JSON.parse((event as MessageEvent<string>).data) as {
+          sourceClientId?: string;
+        };
+        if (payload.sourceClientId === getClientId()) {
+          return;
+        }
+      } catch {
+        // パース失敗時も安全側で最新化する
+      }
+      void syncFromServer();
+    });
+
+    return () => {
+      source.close();
+    };
+  }, [syncFromServer]);
 
   const applyUtilityState = useCallback(
     (siteId: string, kind: UtilityKind, records: YearlyDataMap, notes?: YearlyNotesMap) => {
@@ -68,7 +161,6 @@ export function App() {
         if (!prev) return prev;
         return {
           ...prev,
-          activeSiteId: siteId,
           sites: prev.sites.map((site) =>
             site.id !== siteId
               ? site
@@ -183,7 +275,9 @@ export function App() {
   }
 
   const activeSite =
-    store.sites.find((s) => s.id === store.activeSiteId) ?? store.sites[0]!;
+    store.sites.find((s) => s.id === activeSiteId) ??
+    store.sites.find((s) => s.id === store.activeSiteId) ??
+    store.sites[0]!;
   const activeUtility = activeSite.utilities[activeKind];
 
   const pushHistory = (
@@ -203,10 +297,10 @@ export function App() {
 
   const handleSelectSite = async (siteId: string) => {
     setError(null);
-    setStore((prev) => (prev ? { ...prev, activeSiteId: siteId } : prev));
+    setActiveSiteId(siteId);
+    saveStoredActiveSiteId(siteId);
     try {
-      const next = await setActiveSite(siteId);
-      setStore(next);
+      await setActiveSite(siteId);
     } catch (err) {
       setError(err instanceof Error ? err.message : '拠点切替に失敗しました');
     }
@@ -219,6 +313,8 @@ export function App() {
     try {
       const res = await createSite(name.trim());
       setStore(res.store);
+      setActiveSiteId(res.site.id);
+      saveStoredActiveSiteId(res.site.id);
       setNotice(`拠点「${res.site.name}」を追加しました`);
     } catch (err) {
       setError(err instanceof Error ? err.message : '拠点追加に失敗しました');
@@ -244,6 +340,9 @@ export function App() {
     try {
       const next = await deleteSite(activeSite.id);
       setStore(next);
+      const nextSiteId = next.activeSiteId ?? next.sites[0]?.id ?? null;
+      setActiveSiteId(nextSiteId);
+      saveStoredActiveSiteId(nextSiteId);
       setUndoStack([]);
       setRedoStack([]);
       setNotice(`拠点「${activeSite.name}」を削除しました`);
