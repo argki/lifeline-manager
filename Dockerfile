@@ -12,6 +12,7 @@ RUN if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm ins
 COPY tsconfig.json tsconfig.server.json vite.config.ts vitest.config.ts ./
 COPY index.html* ./
 COPY assets ./assets
+COPY public ./public
 COPY src ./src
 RUN pnpm run build
 
