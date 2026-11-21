@@ -293,7 +293,7 @@ export function UtilityTable({
                     className="year-action-btn year-action-add"
                     onClick={handleAddNextYear}
                     disabled={!canAddYear}
-                    title={addTooltip}
+                    data-tooltip={addTooltip}
                     aria-label={addTooltip}
                   >
                     <Plus size={14} />
@@ -303,7 +303,7 @@ export function UtilityTable({
                     className="year-action-btn year-action-remove"
                     onClick={handleDeleteLastYear}
                     disabled={lastYear === null}
-                    title={deleteTooltip}
+                    data-tooltip={deleteTooltip}
                     aria-label={deleteTooltip}
                   >
                     <Minus size={14} />
