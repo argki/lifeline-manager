@@ -332,7 +332,7 @@ export function App() {
       <header className="app-header">
         <div className="header-main">
           <div className="header-left">
-            <h1 className="app-title">ライフライン使用量・料金管理</h1>
+            <h1 className="app-title">ライフライン使用量・料金管理アプリ</h1>
             <div className="site-controls">
               <select
                 className="site-select"
