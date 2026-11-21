@@ -36,6 +36,7 @@ export function createApp(
   };
 
   app.get('/api/health', (c) => {
+    c.header('Access-Control-Allow-Origin', '*');
     return c.json({ ok: true, timestamp: new Date().toISOString() });
   });
 
