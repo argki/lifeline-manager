@@ -119,7 +119,13 @@ export function UsageCharts({ meta, records }: UsageChartsProps) {
                 style: { fontSize: 12, fill: '#475569' },
               }}
             />
-            <Tooltip />
+            <Tooltip
+              itemSorter={(item) =>
+                typeof item.value === 'number' && Number.isFinite(item.value)
+                  ? -item.value
+                  : Number.POSITIVE_INFINITY
+              }
+            />
             <Legend />
             {selectedYears.map((year, idx) => (
               <Line

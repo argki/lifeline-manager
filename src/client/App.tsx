@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeftRight,
+  ChevronDown,
+  ChevronUp,
   Droplets,
   Flame,
   Pencil,
   Plus,
+  Settings,
   Trash2,
   Zap,
 } from 'lucide-react';
@@ -44,6 +47,7 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showManagementMenu, setShowManagementMenu] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
@@ -326,51 +330,73 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="header-left">
-          <h1 className="app-title">ライフライン使用量・料金管理</h1>
-          <div className="site-controls">
-            <select
-              className="site-select"
-              aria-label="拠点選択"
-              value={activeSite.id}
-              onChange={(e) => handleSelectSite(e.target.value)}
-            >
-              {store.sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="btn" onClick={handleAddSite} title="拠点を追加">
-              <Plus size={14} />
-              追加
-            </button>
-            <button type="button" className="btn" onClick={handleRenameSite} title="拠点名を変更">
-              <Pencil size={14} />
-              名称変更
-            </button>
+        <div className="header-main">
+          <div className="header-left">
+            <h1 className="app-title">ライフライン使用量・料金管理</h1>
+            <div className="site-controls">
+              <select
+                className="site-select"
+                aria-label="拠点選択"
+                value={activeSite.id}
+                onChange={(e) => handleSelectSite(e.target.value)}
+              >
+                {store.sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="header-right">
+            <span className={`save-badge ${saving ? 'saving' : ''}`}>
+              {saving ? '保存中...' : 'ローカル保存済み'}
+            </span>
             <button
               type="button"
-              className="btn btn-danger"
-              onClick={handleDeleteSite}
-              disabled={store.sites.length <= 1}
-              title="拠点を削除"
+              className={`btn ${showManagementMenu ? 'btn-active' : ''}`}
+              aria-expanded={showManagementMenu}
+              onClick={() => setShowManagementMenu((prev) => !prev)}
             >
-              <Trash2 size={14} />
-              削除
+              <Settings size={15} />
+              管理・移行
+              {showManagementMenu ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
           </div>
         </div>
 
-        <div className="header-right">
-          <span className={`save-badge ${saving ? 'saving' : ''}`}>
-            {saving ? '保存中...' : 'ローカル保存済み'}
-          </span>
-          <button type="button" className="btn" onClick={() => setShowTransferModal(true)}>
-            <ArrowLeftRight size={15} />
-            データ移行・バックアップ
-          </button>
-        </div>
+        {showManagementMenu && (
+          <div className="management-panel">
+            <div className="management-group">
+              <span className="management-label">拠点管理:</span>
+              <button type="button" className="btn" onClick={handleAddSite} title="拠点を追加">
+                <Plus size={14} />
+                追加
+              </button>
+              <button type="button" className="btn" onClick={handleRenameSite} title="拠点名を変更">
+                <Pencil size={14} />
+                名称変更
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleDeleteSite}
+                disabled={store.sites.length <= 1}
+                title="拠点を削除"
+              >
+                <Trash2 size={14} />
+                削除
+              </button>
+            </div>
+            <div className="management-group">
+              <button type="button" className="btn" onClick={() => setShowTransferModal(true)}>
+                <ArrowLeftRight size={15} />
+                データ移行・バックアップ
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {error && <div className="error-banner">{error}</div>}

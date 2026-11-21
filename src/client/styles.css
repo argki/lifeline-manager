@@ -31,15 +31,45 @@ body {
 
 .app-header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 14px;
+}
+
+.header-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.management-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.management-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.management-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-right: 2px;
 }
 
 .header-left {
@@ -108,6 +138,12 @@ body {
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.btn-active {
+  background: #eff6ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .btn-primary {
@@ -186,21 +222,46 @@ body {
 }
 
 .table-scroll {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 65vh;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 .utility-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.84rem;
 }
 
 .utility-table th,
 .utility-table td {
-  border: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 4px 6px;
   text-align: right;
   white-space: nowrap;
+}
+
+.utility-table th:last-child,
+.utility-table td:last-child {
+  border-right: none;
+}
+
+.utility-table tbody tr:last-child td,
+.utility-table tbody tr:nth-last-child(2) td.year-cell {
+  border-bottom: none;
+}
+
+.utility-table tbody td {
+  background: var(--surface);
+}
+
+.utility-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 .utility-table thead th {
@@ -216,17 +277,47 @@ body {
   font-weight: 500;
 }
 
+.utility-table thead tr.sub-header th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+}
+
+.utility-table thead tr:not(.sub-header) th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  width: 84px;
+  min-width: 84px;
+}
+
+.utility-table thead tr:not(.sub-header) th:nth-child(2) {
+  position: sticky;
+  left: 84px;
+  z-index: 4;
+  width: 52px;
+  min-width: 52px;
+}
+
 .utility-table td.year-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
   text-align: center;
   font-weight: 700;
   background: #f8fafc;
+  width: 84px;
   min-width: 84px;
 }
 
 .utility-table td.unit-cell {
+  position: sticky;
+  left: 84px;
+  z-index: 2;
   text-align: center;
   color: var(--text-muted);
   background: #fafafa;
+  width: 52px;
   min-width: 52px;
 }
 

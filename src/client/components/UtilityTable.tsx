@@ -260,7 +260,7 @@ export function UtilityTable({
             {years.length === 0 ? (
               <tr>
                 <td colSpan={meta.billingMonths.length + 4} style={{ textAlign: 'center', padding: 24 }}>
-                  データがありません。「年を追加」または右上の「データ移行」から CSV を取り込んでください。
+                  データがありません。「年を追加」または右上の「管理・移行」→「データ移行・バックアップ」から CSV を取り込んでください。
                 </td>
               </tr>
             ) : (
