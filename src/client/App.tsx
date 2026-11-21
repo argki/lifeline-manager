@@ -482,7 +482,7 @@ export function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-utility-kind={activeKind}>
       <header className="app-header">
         <div className="header-main">
           <div className="header-left">
