@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildUsageChartData, calculateYearSummary } from './aggregation.js';
+import { buildChartData, buildUsageChartData, calculateYearSummary } from './aggregation.js';
 import { DEFAULT_UTILITY_METAS } from './utilities.js';
 
 describe('aggregation', () => {
@@ -63,6 +63,23 @@ describe('aggregation', () => {
     expect(data).toEqual([
       { month: 1, monthLabel: '1月', y_2025: 16, y_2026: 16 },
       { month: 3, monthLabel: '3月', y_2025: 18, y_2026: null },
+      { month: 5, monthLabel: '5月', y_2025: null, y_2026: null },
+    ]);
+  });
+
+  it('builds amount chart data series when metric is amount', () => {
+    const data = buildChartData(
+      {
+        '2025': { '1': { usage: 16, amount: 5909 }, '3': { usage: 18, amount: 6034 } },
+        '2026': { '1': { usage: 16, amount: null } },
+      },
+      [1, 3, 5],
+      [2025, 2026],
+      'amount',
+    );
+    expect(data).toEqual([
+      { month: 1, monthLabel: '1月', y_2025: 5909, y_2026: null },
+      { month: 3, monthLabel: '3月', y_2025: 6034, y_2026: null },
       { month: 5, monthLabel: '5月', y_2025: null, y_2026: null },
     ]);
   });

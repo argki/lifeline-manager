@@ -10,9 +10,10 @@ import {
   YAxis,
 } from 'recharts';
 import {
-  buildUsageChartData,
+  buildChartData,
   getSortedYears,
   getYearSeriesLabel,
+  type ChartMetric,
 } from '../../shared/aggregation.js';
 import type { UtilityMeta, YearlyDataMap } from '../../shared/types.js';
 
@@ -39,6 +40,7 @@ const LINE_COLORS = [
 export function UsageCharts({ meta, records }: UsageChartsProps) {
   const allYears = useMemo(() => getSortedYears(records), [records]);
   const [selectedYears, setSelectedYears] = useState<number[]>(allYears);
+  const [metric, setMetric] = useState<ChartMetric>('usage');
 
   useEffect(() => {
     setSelectedYears((prev) => {
@@ -60,20 +62,41 @@ export function UsageCharts({ meta, records }: UsageChartsProps) {
   };
 
   const chartData = useMemo(
-    () => buildUsageChartData(records, meta.billingMonths, selectedYears),
-    [records, meta.billingMonths, selectedYears],
+    () => buildChartData(records, meta.billingMonths, selectedYears, metric),
+    [records, meta.billingMonths, selectedYears, metric],
   );
 
   if (allYears.length === 0) {
     return null;
   }
 
+  const metricLabel = metric === 'usage' ? '使用量' : '金額';
+  const metricUnit = metric === 'usage' ? meta.unit : '円';
+
   return (
     <section className="card">
       <div className="card-header">
         <div className="card-title-group">
-          <h2 className="card-title">使用量推移グラフ（リアルタイム反映）</h2>
-          <span className="billing-note">単位: {meta.unit}</span>
+          <h2 className="card-title">{metricLabel}推移グラフ（リアルタイム反映）</h2>
+          <span className="billing-note">単位: {metricUnit}</span>
+          <div className="metric-toggle" role="group" aria-label="グラフ表示指標">
+            <button
+              type="button"
+              className={`metric-toggle-btn ${metric === 'usage' ? 'active' : ''}`}
+              aria-pressed={metric === 'usage'}
+              onClick={() => setMetric('usage')}
+            >
+              使用量 ({meta.unit})
+            </button>
+            <button
+              type="button"
+              className={`metric-toggle-btn ${metric === 'amount' ? 'active' : ''}`}
+              aria-pressed={metric === 'amount'}
+              onClick={() => setMetric('amount')}
+            >
+              金額 (円)
+            </button>
+          </div>
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
           <button type="button" className="btn" onClick={() => setSelectedYears(allYears)}>
@@ -112,14 +135,27 @@ export function UsageCharts({ meta, records }: UsageChartsProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="monthLabel" />
             <YAxis
+              width={68}
+              tickFormatter={(value: number) => value.toLocaleString('ja-JP')}
               label={{
-                value: `使用量 [${meta.unit}]`,
+                value: `${metricLabel} [${metricUnit}]`,
                 angle: -90,
                 position: 'insideLeft',
                 style: { fontSize: 12, fill: '#475569' },
               }}
             />
             <Tooltip
+              formatter={(value) => {
+                if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+                const formatted =
+                  metric === 'amount'
+                    ? Math.round(value).toLocaleString('ja-JP')
+                    : value.toLocaleString('ja-JP', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: meta.decimalPlaces,
+                      });
+                return `${formatted} ${metricUnit}`;
+              }}
               itemSorter={(item) =>
                 typeof item.value === 'number' && Number.isFinite(item.value)
                   ? -item.value

@@ -55,6 +55,8 @@ export function calculateYearSummary(
   };
 }
 
+export type ChartMetric = 'usage' | 'amount';
+
 export interface ChartMonthPoint {
   month: number;
   monthLabel: string;
@@ -65,10 +67,11 @@ export interface ChartMonthPoint {
  * Recharts 用の月別推移データ配列を構築する。
  * key は `y_<西暦>` 形式（例: "y_2026"）で格納する。
  */
-export function buildUsageChartData(
+export function buildChartData(
   records: YearlyDataMap,
   billingMonths: readonly number[],
   years: readonly number[],
+  metric: ChartMetric = 'usage',
 ): ChartMonthPoint[] {
   return billingMonths.map((month) => {
     const point: ChartMonthPoint = {
@@ -77,10 +80,19 @@ export function buildUsageChartData(
     };
     for (const year of years) {
       const entry = records[String(year)]?.[String(month)];
-      point[`y_${year}`] = entry && isValidNumber(entry.usage) ? entry.usage : null;
+      const value = entry?.[metric];
+      point[`y_${year}`] = isValidNumber(value) ? value : null;
     }
     return point;
   });
+}
+
+export function buildUsageChartData(
+  records: YearlyDataMap,
+  billingMonths: readonly number[],
+  years: readonly number[],
+): ChartMonthPoint[] {
+  return buildChartData(records, billingMonths, years, 'usage');
 }
 
 export function getSortedYears(records: YearlyDataMap): number[] {
