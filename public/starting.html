@@ -144,15 +144,15 @@
       <div id="status-badge" class="badge">起動中</div>
       <h1 id="page-heading">アプリを起動しています…</h1>
       <p id="page-description">
-        コンテナとローカルサーバーの準備を行っています。<br />
-        起動が完了すると、このまま自動的にアプリ画面へ切り替わります。
+        アプリ起動中です。<br />
+        しばらくすると自動的に画面が切り替わりますので、このままお待ちください。
       </p>
       <div class="actions">
-        <button id="retry-btn" type="button">今すぐ接続を確認</button>
-        <div id="status-text" class="status">サーバーの応答を待機しています…（0秒経過）</div>
+        <button id="retry-btn" type="button">再確認する</button>
+        <div id="status-text" class="status">準備しています…（0秒経過）</div>
       </div>
       <div id="timeout-note" class="timeout-note" role="status">
-        起動に時間がかかっています。Docker が起動していないか、コンソール画面（黒い画面）にエラーが表示されている可能性があります。コンソール画面の内容をご確認のうえ、必要に応じて再起動してください。
+        起動に時間がかかっています。しばらく経っても切り替わらない場合は、一度画面を閉じてアプリをもう一度起動し直してみてください。
       </div>
     </main>
     <script>
@@ -179,15 +179,15 @@
           statusBadge.classList.add('update');
         }
         if (pageHeading) {
-          pageHeading.textContent = 'アプリをアップデートしています…';
+          pageHeading.textContent = 'アプリを最新バージョンに更新しています…';
         }
         if (pageDescription) {
           pageDescription.innerHTML =
-            'コンテナの再ビルドと最新化を行っています。<br />通常よりお時間がかかる場合がありますが、完了すると自動的にアプリ画面へ切り替わります。';
+            '最新の状態へアップデートしています。<br />通常より少し時間がかかる場合がありますが、完了すると自動的にアプリが開きますのでこのままお待ちください。';
         }
         if (timeoutNote) {
           timeoutNote.textContent =
-            'アップデート・再ビルドに時間がかかっています。Docker が起動していないか、コンソール画面（黒い画面）にエラーが表示されていないかご確認ください。';
+            'アップデートに時間がかかっています。しばらく経っても切り替わらない場合は一度画面を閉じてアプリをもう一度起動し直してみてください。';
         }
       }
 
@@ -201,15 +201,15 @@
         if (redirected || !statusText) return;
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
         const prefix = isUpdateMode
-          ? 'アップデート完了を待機しています…'
-          : 'サーバーの応答を待機しています…';
+          ? '更新の完了を待っています…'
+          : '準備しています…';
         statusText.textContent = `${prefix}（${elapsedSec}秒経過）`;
 
         if (Date.now() - startedAt >= TIMEOUT_NOTICE_MS) {
           if (statusBadge) {
             statusBadge.textContent = isUpdateMode
-              ? 'アップデート待機中（時間超過）'
-              : '起動待機中（時間超過）';
+              ? '更新に時間がかかっています'
+              : '起動に時間がかかっています';
             statusBadge.classList.remove('update');
             statusBadge.classList.add('warn');
           }
@@ -223,7 +223,7 @@
         if (checking || redirected) return;
         checking = true;
         if (manual && statusText) {
-          statusText.textContent = '接続を確認しています…';
+          statusText.textContent = '起動を確認しています…';
         }
         try {
           const res = await fetch(HEALTH_URL, { cache: 'no-store' });
@@ -249,8 +249,8 @@
               redirected = true;
               if (statusText) {
                 statusText.textContent = isUpdateMode
-                  ? 'アップデートが完了しました。アプリへ移動します…'
-                  : '起動が完了しました。アプリへ移動します…';
+                  ? 'アップデートが完了しました。アプリを開きます…'
+                  : '準備ができました。アプリを開きます…';
               }
               window.location.replace(APP_URL);
               return;
