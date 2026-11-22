@@ -18,12 +18,16 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "[ライフライン管理] Git リポジトリの更新を確認しています..."
+sh "$(pwd)/scripts/update-helper.sh" pull
+
 echo "[ライフライン管理] コンテナを再ビルドして更新しています..."
 docker compose up -d --build --force-recreate
 
 echo "[ライフライン管理] アプリの起動を待機しています..."
 for i in $(seq 1 180); do
   if curl -sf "http://127.0.0.1:3456/api/health" >/dev/null 2>&1; then
+    rm -f "$(pwd)/data/.update-pending"
     if [ "$OPENED_STARTING" = true ]; then
       echo "[ライフライン管理] 更新完了。アプリの準備が整いました (http://127.0.0.1:3456)"
     else

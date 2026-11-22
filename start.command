@@ -3,47 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-DATA_FILE="$(pwd)/data/lifeline.json"
+PENDING_FILE="$(pwd)/data/.update-pending"
 UPDATE_NEEDED=false
-THIRTY_DAYS_SEC=$((30 * 86400))
-NOW_EPOCH=$(date +%s)
-
-get_file_mtime_epoch() {
-  local target="$1"
-  if stat -f %m "$target" >/dev/null 2>&1; then
-    stat -f %m "$target"
-  else
-    stat -c %Y "$target"
-  fi
-}
-
-if [ -f "$DATA_FILE" ]; then
-  DATA_EPOCH=$(get_file_mtime_epoch "$DATA_FILE")
-  if [ $((NOW_EPOCH - DATA_EPOCH)) -ge "$THIRTY_DAYS_SEC" ]; then
-    UPDATE_NEEDED=true
-    IMG_ID=$(docker compose images -q lifeline-app 2>/dev/null || true)
-    if [ -n "$IMG_ID" ]; then
-      IMG_CREATED=$(docker image inspect --format '{{.Created}}' "$IMG_ID" 2>/dev/null || true)
-      if [ -n "$IMG_CREATED" ] && command -v python3 >/dev/null 2>&1; then
-        if python3 -c "
-import datetime, sys
-s = sys.argv[1].replace('Z', '+00:00')
-dt = datetime.datetime.fromisoformat(s)
-age = (datetime.datetime.now(datetime.timezone.utc) - dt.astimezone(datetime.timezone.utc)).total_seconds()
-sys.exit(0 if age < 30 * 86400 else 1)
-" "$IMG_CREATED" 2>/dev/null; then
-          UPDATE_NEEDED=false
-        fi
-      fi
-    fi
-  fi
+if [ -f "$PENDING_FILE" ]; then
+  UPDATE_NEEDED=true
 fi
 
 STARTING_FILE="$(pwd)/public/starting.html"
 OPENED_STARTING=false
 if [ -f "$STARTING_FILE" ]; then
   if [ "$UPDATE_NEEDED" = true ]; then
-    echo "[ライフライン管理] 最終更新から30日以上経過しているため、アップデート中画面をブラウザで開きます..."
+    echo "[ライフライン管理] 予約されたアップデートを実行するため、アップデート中画面をブラウザで開きます..."
     open "file://${STARTING_FILE}?mode=update"
   else
     echo "[ライフライン管理] 起動中画面をブラウザで開きます..."
@@ -60,7 +30,8 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 if [ "$UPDATE_NEEDED" = true ]; then
-  echo "[ライフライン管理] 最終更新から30日以上経過しているため、コンテナを再ビルドして更新しています..."
+  echo "[ライフライン管理] 予約されたアップデートを実行しています（Git 更新確認・コンテナ再ビルド）..."
+  sh "$(pwd)/scripts/update-helper.sh" pull
   docker compose up -d --build --force-recreate
   MAX_WAIT=180
 else
@@ -77,6 +48,12 @@ for i in $(seq 1 "$MAX_WAIT"); do
     else
       echo "[ライフライン管理] ブラウザを開きます (http://127.0.0.1:3456)"
       open "http://127.0.0.1:3456"
+    fi
+    if [ "$UPDATE_NEEDED" = true ]; then
+      rm -f "$PENDING_FILE"
+    else
+      echo "[ライフライン管理] 次回起動向けのアップデート有無を確認しています..."
+      sh "$(pwd)/scripts/update-helper.sh" check "$PENDING_FILE"
     fi
     exit 0
   fi

@@ -30,6 +30,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo [Lifeline Manager] Checking for git updates on WSL...
+wsl sh scripts/update-helper.sh pull
+
 echo [Lifeline Manager] Rebuilding and updating container on WSL...
 wsl docker compose up -d --build --force-recreate
 if errorlevel 1 (
@@ -55,6 +58,7 @@ timeout /t 1 /nobreak >nul
 goto WAIT_LOOP
 
 :READY
+if exist "%~dp0data\.update-pending" del /f /q "%~dp0data\.update-pending"
 echo [Lifeline Manager] Keeping WSL session active while container is running...
 powershell -NoProfile -Command "$q = [char]34; Start-Process -FilePath 'wsl.exe' -WindowStyle Hidden -ArgumentList ('-e sh -c ' + $q + 'exec 9>/tmp/lifeline-manager-keepalive.lock && flock -n 9 && while docker inspect -f {{.State.Running}} lifeline-manager 2>/dev/null | grep -qx true; do sleep 10; done' + $q)"
 

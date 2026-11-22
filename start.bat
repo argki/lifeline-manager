@@ -3,18 +3,9 @@ setlocal
 cd /d "%~dp0"
 
 set "UPDATE_NEEDED=0"
-set "DATA_FILE=%~dp0data\lifeline.json"
-if exist "%DATA_FILE%" (
-  powershell -NoProfile -Command "try { $p = '%DATA_FILE%'; $raw = Get-Content -Raw -Encoding UTF8 $p | ConvertFrom-Json; $dt = if ($raw.updatedAt) { [DateTimeOffset]::Parse($raw.updatedAt).UtcDateTime } else { (Get-Item $p).LastWriteTimeUtc }; if (((Get-Date).ToUniversalTime() - $dt).TotalDays -ge 30) { exit 1 } else { exit 0 } } catch { $dt = (Get-Item '%DATA_FILE%').LastWriteTimeUtc; if (((Get-Date).ToUniversalTime() - $dt).TotalDays -ge 30) { exit 1 } else { exit 0 } }" >nul 2>&1
-  if errorlevel 1 (
-    set "UPDATE_NEEDED=1"
-    for /f "usebackq delims=" %%I in (`wsl docker compose images -q lifeline-app 2^>nul`) do (
-      for /f "usebackq delims=" %%C in (`wsl docker image inspect --format "{{.Created}}" %%I 2^>nul`) do (
-        powershell -NoProfile -Command "try { $dt = [DateTimeOffset]::Parse('%%C').UtcDateTime; if (((Get-Date).ToUniversalTime() - $dt).TotalDays -lt 30) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
-        if not errorlevel 1 set "UPDATE_NEEDED=0"
-      )
-    )
-  )
+set "PENDING_FILE=%~dp0data\.update-pending"
+if exist "%PENDING_FILE%" (
+  set "UPDATE_NEEDED=1"
 )
 
 set "STARTING_FILE=%~dp0public\starting.html"
@@ -47,7 +38,8 @@ if errorlevel 1 (
 )
 
 if "%UPDATE_NEEDED%"=="1" (
-  echo [Lifeline Manager] Last update was over 30 days ago. Rebuilding and updating container on WSL...
+  echo [Lifeline Manager] Scheduled update detected. Pulling latest changes and rebuilding container on WSL...
+  wsl sh scripts/update-helper.sh pull
   wsl docker compose up -d --build --force-recreate
   set "MAX_WAIT=180"
 ) else (
@@ -80,6 +72,14 @@ goto WAIT_LOOP
 :READY
 echo [Lifeline Manager] Keeping WSL session active while container is running...
 powershell -NoProfile -Command "$q = [char]34; Start-Process -FilePath 'wsl.exe' -WindowStyle Hidden -ArgumentList ('-e sh -c ' + $q + 'exec 9>/tmp/lifeline-manager-keepalive.lock && flock -n 9 && while docker inspect -f {{.State.Running}} lifeline-manager 2>/dev/null | grep -qx true; do sleep 10; done' + $q)"
+
+if "%UPDATE_NEEDED%"=="1" (
+  if exist "%PENDING_FILE%" del /f /q "%PENDING_FILE%"
+  echo [Lifeline Manager] Scheduled update completed.
+) else (
+  echo [Lifeline Manager] Checking for updates for next startup...
+  wsl sh scripts/update-helper.sh check data/.update-pending
+)
 
 echo [Lifeline Manager] Application is ready at http://127.0.0.1:3456
 timeout /t 1 /nobreak >nul
