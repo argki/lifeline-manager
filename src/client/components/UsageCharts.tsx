@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -37,28 +37,35 @@ const LINE_COLORS = [
   '#db2777',
 ];
 
+function resolveSelectedYears(allYears: number[], prev: number[] | null): number[] {
+  if (prev === null) {
+    return allYears;
+  }
+  if (prev.length === 0) {
+    return [];
+  }
+  const prevSet = new Set(prev);
+  const next = allYears.filter((y) => prevSet.has(y));
+  return next.length > 0 ? next : allYears;
+}
+
 export function UsageCharts({ meta, records }: UsageChartsProps) {
   const allYears = useMemo(() => getSortedYears(records), [records]);
-  const [selectedYears, setSelectedYears] = useState<number[]>(allYears);
+  const [selectedYearsState, setSelectedYearsState] = useState<number[] | null>(null);
   const [metric, setMetric] = useState<ChartMetric>('usage');
 
-  useEffect(() => {
-    setSelectedYears((prev) => {
-      const prevSet = new Set(prev);
-      const next = allYears.filter((y) => prevSet.has(y));
-      for (const y of allYears) {
-        if (!prevSet.has(y) && prev.length === 0) {
-          next.push(y);
-        }
-      }
-      return next.length > 0 ? next : allYears;
-    });
-  }, [allYears]);
+  const selectedYears = useMemo(
+    () => resolveSelectedYears(allYears, selectedYearsState),
+    [allYears, selectedYearsState],
+  );
 
   const toggleYear = (year: number) => {
-    setSelectedYears((prev) =>
-      prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year].sort((a, b) => a - b),
-    );
+    setSelectedYearsState((prev) => {
+      const current = resolveSelectedYears(allYears, prev);
+      return current.includes(year)
+        ? current.filter((y) => y !== year)
+        : [...current, year].sort((a, b) => a - b);
+    });
   };
 
   const chartData = useMemo(
@@ -99,17 +106,17 @@ export function UsageCharts({ meta, records }: UsageChartsProps) {
           </div>
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <button type="button" className="btn" onClick={() => setSelectedYears(allYears)}>
+          <button type="button" className="btn" onClick={() => setSelectedYearsState(allYears)}>
             すべて選択
           </button>
           <button
             type="button"
             className="btn"
-            onClick={() => setSelectedYears(allYears.slice(-5))}
+            onClick={() => setSelectedYearsState(allYears.slice(-5))}
           >
             直近5年
           </button>
-          <button type="button" className="btn" onClick={() => setSelectedYears([])}>
+          <button type="button" className="btn" onClick={() => setSelectedYearsState([])}>
             すべて解除
           </button>
         </div>

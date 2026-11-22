@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus, Redo2, Undo2 } from 'lucide-react';
 import { calculateYearSummary, getSortedYears } from '../../shared/aggregation.js';
 import {
@@ -56,12 +56,6 @@ function NumericCellInput({
 }: NumericCellInputProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-
-  useEffect(() => {
-    if (!editing) {
-      setDraft(value === null ? '' : String(value));
-    }
-  }, [value, editing]);
 
   const commit = () => {
     setEditing(false);
@@ -137,12 +131,6 @@ function NoteCellInput({ value, ariaLabel, focusKey, onCommit, onNavigate }: Not
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
-  useEffect(() => {
-    if (!editing) {
-      setDraft(value);
-    }
-  }, [value, editing]);
-
   const commit = () => {
     setEditing(false);
     if (draft !== value) {
@@ -196,7 +184,7 @@ export function UtilityTable({
   onDeleteYear,
 }: UtilityTableProps) {
   const tableRef = useRef<HTMLTableElement>(null);
-  const years = getSortedYears(records);
+  const years = useMemo(() => getSortedYears(records), [records]);
   const currentYear = new Date().getFullYear();
   const nextYear = years.length > 0 ? years[years.length - 1]! + 1 : currentYear;
   const lastYear = years.length > 0 ? years[years.length - 1]! : null;
