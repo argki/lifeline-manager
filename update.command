@@ -19,7 +19,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "[ライフライン管理] コンテナを再ビルドして更新しています..."
-docker compose up -d --build
+docker compose up -d --build --force-recreate
 
 echo "[ライフライン管理] アプリの起動を待機しています..."
 for i in $(seq 1 180); do

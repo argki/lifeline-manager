@@ -61,7 +61,7 @@ fi
 
 if [ "$UPDATE_NEEDED" = true ]; then
   echo "[ライフライン管理] 最終更新から30日以上経過しているため、コンテナを再ビルドして更新しています..."
-  docker compose up -d --build
+  docker compose up -d --build --force-recreate
   MAX_WAIT=180
 else
   echo "[ライフライン管理] コンテナを起動しています..."

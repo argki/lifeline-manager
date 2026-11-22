@@ -31,7 +31,7 @@ if errorlevel 1 (
 )
 
 echo [Lifeline Manager] Rebuilding and updating container on WSL...
-wsl docker compose up -d --build
+wsl docker compose up -d --build --force-recreate
 if errorlevel 1 (
   echo [ERROR] Failed to build or start container.
   pause

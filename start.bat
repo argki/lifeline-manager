@@ -48,7 +48,7 @@ if errorlevel 1 (
 
 if "%UPDATE_NEEDED%"=="1" (
   echo [Lifeline Manager] Last update was over 30 days ago. Rebuilding and updating container on WSL...
-  wsl docker compose up -d --build
+  wsl docker compose up -d --build --force-recreate
   set "MAX_WAIT=180"
 ) else (
   echo [Lifeline Manager] Starting container on WSL...
