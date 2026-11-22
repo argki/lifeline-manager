@@ -22,6 +22,7 @@ function createSiteId(): string {
 }
 
 const SSE_HEARTBEAT_MS = 25_000;
+const SERVER_STARTED_AT = new Date().toISOString();
 
 export function createApp(
   repo: StoreRepository,
@@ -37,7 +38,11 @@ export function createApp(
 
   app.get('/api/health', (c) => {
     c.header('Access-Control-Allow-Origin', '*');
-    return c.json({ ok: true, timestamp: new Date().toISOString() });
+    return c.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      startedAt: SERVER_STARTED_AT,
+    });
   });
 
   app.get('/api/events', (c) => {

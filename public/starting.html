@@ -15,6 +15,8 @@
         --primary: #2563eb;
         --primary-hover: #1d4ed8;
         --primary-soft: #eff6ff;
+        --update: #0284c7;
+        --update-soft: #e0f2fe;
         --warn-bg: #fffbeb;
         --warn-text: #b45309;
       }
@@ -35,7 +37,7 @@
       }
       .card {
         width: 100%;
-        max-width: 480px;
+        max-width: 500px;
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 12px;
@@ -56,6 +58,10 @@
         border-radius: 50%;
         animation: spin 0.9s linear infinite;
       }
+      body.mode-update .spinner {
+        border-color: #bae6fd;
+        border-top-color: var(--update);
+      }
       @keyframes spin {
         to {
           transform: rotate(360deg);
@@ -70,6 +76,10 @@
         font-size: 12px;
         font-weight: 600;
         margin-bottom: 12px;
+      }
+      .badge.update {
+        background: var(--update-soft);
+        color: var(--update);
       }
       .badge.warn {
         background: var(--warn-bg);
@@ -132,8 +142,8 @@
         <div class="spinner"></div>
       </div>
       <div id="status-badge" class="badge">起動中</div>
-      <h1>アプリを起動しています…</h1>
-      <p>
+      <h1 id="page-heading">アプリを起動しています…</h1>
+      <p id="page-description">
         コンテナとローカルサーバーの準備を行っています。<br />
         起動が完了すると、このまま自動的にアプリ画面へ切り替わります。
       </p>
@@ -149,25 +159,58 @@
       const APP_URL = 'http://127.0.0.1:3456/';
       const HEALTH_URL = 'http://127.0.0.1:3456/api/health';
       const POLL_INTERVAL_MS = 800;
-      const TIMEOUT_NOTICE_MS = 35000;
+
+      const params = new URLSearchParams(window.location.search);
+      const isUpdateMode = params.get('mode') === 'update';
+      const TIMEOUT_NOTICE_MS = isUpdateMode ? 180000 : 35000;
 
       const statusBadge = document.getElementById('status-badge');
+      const pageHeading = document.getElementById('page-heading');
+      const pageDescription = document.getElementById('page-description');
       const statusText = document.getElementById('status-text');
       const retryBtn = document.getElementById('retry-btn');
       const timeoutNote = document.getElementById('timeout-note');
 
+      if (isUpdateMode) {
+        document.body.classList.add('mode-update');
+        document.title = 'アップデート中... - ライフライン使用量・料金管理アプリ';
+        if (statusBadge) {
+          statusBadge.textContent = 'アップデート中';
+          statusBadge.classList.add('update');
+        }
+        if (pageHeading) {
+          pageHeading.textContent = 'アプリをアップデートしています…';
+        }
+        if (pageDescription) {
+          pageDescription.innerHTML =
+            'コンテナの再ビルドと最新化を行っています。<br />通常よりお時間がかかる場合がありますが、完了すると自動的にアプリ画面へ切り替わります。';
+        }
+        if (timeoutNote) {
+          timeoutNote.textContent =
+            'アップデート・再ビルドに時間がかかっています。Docker が起動していないか、コンソール画面（黒い画面）にエラーが表示されていないかご確認ください。';
+        }
+      }
+
       const startedAt = Date.now();
       let checking = false;
       let redirected = false;
+      let initialServerStartedAt = undefined;
+      let sawServerRestartOrStop = !isUpdateMode;
 
       function updateElapsedText() {
         if (redirected || !statusText) return;
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-        statusText.textContent = `サーバーの応答を待機しています…（${elapsedSec}秒経過）`;
+        const prefix = isUpdateMode
+          ? 'アップデート完了を待機しています…'
+          : 'サーバーの応答を待機しています…';
+        statusText.textContent = `${prefix}（${elapsedSec}秒経過）`;
 
         if (Date.now() - startedAt >= TIMEOUT_NOTICE_MS) {
           if (statusBadge) {
-            statusBadge.textContent = '起動待機中（時間超過）';
+            statusBadge.textContent = isUpdateMode
+              ? 'アップデート待機中（時間超過）'
+              : '起動待機中（時間超過）';
+            statusBadge.classList.remove('update');
             statusBadge.classList.add('warn');
           }
           if (timeoutNote) {
@@ -185,15 +228,39 @@
         try {
           const res = await fetch(HEALTH_URL, { cache: 'no-store' });
           if (res.ok) {
-            redirected = true;
-            if (statusText) {
-              statusText.textContent = '起動が完了しました。アプリへ移動します…';
+            let serverStartedAt = null;
+            try {
+              const data = await res.json();
+              serverStartedAt = typeof data?.startedAt === 'string' ? data.startedAt : null;
+            } catch {
+              serverStartedAt = null;
             }
-            window.location.replace(APP_URL);
-            return;
+
+            if (isUpdateMode && !sawServerRestartOrStop) {
+              if (initialServerStartedAt === undefined) {
+                // アップデート開始時点で既に旧コンテナが稼働していた場合は、再起動を待つ
+                initialServerStartedAt = serverStartedAt;
+              } else if (serverStartedAt && serverStartedAt !== initialServerStartedAt) {
+                sawServerRestartOrStop = true;
+              }
+            }
+
+            if (sawServerRestartOrStop) {
+              redirected = true;
+              if (statusText) {
+                statusText.textContent = isUpdateMode
+                  ? 'アップデートが完了しました。アプリへ移動します…'
+                  : '起動が完了しました。アプリへ移動します…';
+              }
+              window.location.replace(APP_URL);
+              return;
+            }
           }
         } catch {
-          // サーバー起動中は接続エラーになるため待機を継続
+          // アップデート中に旧コンテナが停止した場合は、次の応答で新コンテナとみなす
+          if (isUpdateMode) {
+            sawServerRestartOrStop = true;
+          }
         } finally {
           checking = false;
           if (!redirected && manual) {

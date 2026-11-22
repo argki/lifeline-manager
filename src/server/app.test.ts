@@ -36,7 +36,9 @@ describe('Local API endpoints', () => {
     const healthRes = await app.request('/api/health');
     expect(healthRes.status).toBe(200);
     expect(healthRes.headers.get('access-control-allow-origin')).toBe('*');
-    expect(await healthRes.json()).toMatchObject({ ok: true });
+    const healthBody = (await healthRes.json()) as { ok: boolean; startedAt?: string };
+    expect(healthBody).toMatchObject({ ok: true });
+    expect(typeof healthBody.startedAt).toBe('string');
 
     const storeRes = await app.request('/api/store');
     expect(storeRes.status).toBe(200);
